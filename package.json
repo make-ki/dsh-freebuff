@@ -1,0 +1,59 @@
+{
+  "name": "dsh-freebuff",
+  "version": "0.1.0",
+  "description": "Freebuff provider for the DeepSeek Harness LLM seam: reverse-proxies the freebuff (CodebuffAI) free DeepSeek V4 Flash desktop protocol into a harness model provider (ctx.llm / LlmAdapter).",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "files": [
+    "lib",
+    "src",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "bash scripts/build.sh",
+    "install:profile": "node scripts/install.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "check": "node --check lib/index.js && node --check lib/freebuff.js && node --check lib/adapter.js && node --check lib/translate.js && node --check lib/serialize.js"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-anonymous-user-id": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-llm": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-settings": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-timeout": "^0.1.0-rc.6",
+    "@deepseek-ai/schemastery": "^3.18.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.0",
+    "typescript": "~5.7.2"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "Apache-2.0",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "llm",
+    "provider",
+    "freebuff",
+    "codebuff",
+    "reverse-proxy"
+  ]
+}

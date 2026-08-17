@@ -1,0 +1,4 @@
+# dsh-freebuff bundle patch: insert the provider plugin row into the profile.
+# Consumed via the package.json "dsh" -> "bundle" -> "patch" field.
+- id: llm-freebuff
+  name: dsh-freebuff
