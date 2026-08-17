@@ -9,6 +9,7 @@
  */
 import { installSettingsSection } from '@deepseek-ai/dsh-settings'
 import { getOrCreateAnonymousUserId } from '@deepseek-ai/dsh-anonymous-user-id'
+import { installFreebuffApi } from './api.js'
 import { FreebuffAdapter } from './adapter.js'
 import { FreebuffClient } from './freebuff.js'
 import { Config, NS, resolveAdapterOptions, type ResolvedOptions } from './config.js'
@@ -66,6 +67,30 @@ export function apply(ctx: import('@deepseek-ai/cordis').Context, config: unknow
     return undefined
   }
   const adapter = new FreebuffAdapter({ options, client, userId: resolveUserId, resolveApiKey })
+
+  // Settings panel API (client half renders the Freebuff section on Settings).
+  const credentials = ctx.get('credentials') as
+    | { resolve: (ref: string) => Promise<{ value: unknown } | undefined>; set: (ref: string, value: string) => Promise<unknown>; unset: (ref: string) => Promise<unknown> }
+    | undefined
+  installFreebuffApi(ctx as never, {
+    options,
+    credentials:
+      credentials !== undefined
+        ? {
+            set: (ref, value) => credentials.set(ref, value),
+            unset: (ref) => credentials.unset(ref),
+          }
+        : undefined,
+    credentialConfigured: async () => {
+      if (credentials === undefined) return false
+      const hit = await credentials.resolve(options().apiKeyEnv)
+      return hit !== undefined && hit.value !== undefined && hit.value !== null && String(hit.value).length > 0
+    },
+    probe: async (token) => {
+      const result = await client.probeMe(token)
+      return { status: result.status, data: result.data }
+    },
+  })
 
   ctx.llm.registerConfigurableProviders([
     { provider: PROVIDER, displayName: 'Freebuff', settingsNs: NS, settingsPath: [] },

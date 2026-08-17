@@ -76,7 +76,7 @@ link_pkg() {
 
 echo "=== Linking build dependencies ==="
 mkdir -p node_modules/@deepseek-ai
-for name in cordis cosmokit schemastery dsh-llm dsh-settings dsh-timeout dsh-anonymous-user-id dsh-home-paths dsh-brand dsh-launch-environment @types/node; do
+for name in cordis cosmokit schemastery dsh-llm dsh-settings dsh-timeout dsh-anonymous-user-id dsh-home-paths dsh-brand dsh-launch-environment dsh-client-ui-slots @types/node; do
   link_pkg "$name" || true
 done
 

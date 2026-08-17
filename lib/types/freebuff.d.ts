@@ -53,6 +53,11 @@ export declare class FreebuffClient {
     private resolveProxy;
     private raw;
     private json;
+    /** Zero-quota health probe (GET /api/v1/me), used by the settings panel. */
+    probeMe(token: string): Promise<{
+        status: number;
+        data: unknown;
+    }>;
     isCooled(token: string): boolean;
     cooldown(token: string, ms: number): void;
     private retryAfterMs;

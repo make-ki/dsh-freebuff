@@ -177,6 +177,12 @@ export class FreebuffClient {
 
   // ── account pool ──────────────────────────────────────────────────────────
 
+  /** Zero-quota health probe (GET /api/v1/me), used by the settings panel. */
+  async probeMe(token: string): Promise<{ status: number; data: unknown }> {
+    const r = await this.json('GET', '/api/v1/me', { token, timeoutMs: 10_000 })
+    return { status: r.status, data: r.data }
+  }
+
   isCooled(token: string): boolean {
     const until = this.cooled.get(token)
     return until !== undefined && Date.now() < until

@@ -1,0 +1,107 @@
+/**
+ * Host half of the Freebuff settings panel: a small JSON API under
+ * /freebuff/api served by the harness webserver. The client panel (lib/client.js)
+ * reads status and writes the credential through here — the same
+ * FREEBUFF_API_KEY reference the Models page uses.
+ */
+import type http from 'node:http'
+import { resolveAccounts, type FreebuffAccount } from './credentials.js'
+import { resolveProxyUrl, type ProxyResolution } from './proxy-source.js'
+import type { ResolvedOptions } from './config.js'
+
+export interface ApiDeps {
+  options: () => ResolvedOptions
+  credentials: { set: (ref: string, value: string) => Promise<unknown>; unset: (ref: string) => Promise<unknown> } | undefined
+  credentialConfigured: () => Promise<boolean>
+  /** Raw upstream GET helper for the probe (0-quota /api/v1/me). */
+  probe: (token: string) => Promise<{ status: number; data: unknown }>
+}
+
+type Res = http.ServerResponse
+
+function sendJson(res: Res, status: number, body: unknown): void {
+  const text = JSON.stringify(body)
+  res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+  res.end(text)
+}
+
+async function readJsonBody(req: http.IncomingMessage): Promise<unknown> {
+  const chunks: Buffer[] = []
+  for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+  const text = Buffer.concat(chunks).toString('utf8')
+  if (text.trim() === '') return null
+  try {
+    return JSON.parse(text)
+  } catch {
+    return null
+  }
+}
+
+function mask(token: string): string {
+  return token.length <= 8 ? '••••' : token.slice(0, 4) + '••••' + token.slice(-4)
+}
+
+export function installFreebuffApi(ctx: { get: (name: string) => unknown; effect: (fn: () => unknown, name?: string) => void; logger?: { warn?: (m: string) => void } }, deps: ApiDeps): void {
+  const webserver = ctx.get('webserver') as
+    | { register: (route: { kind: 'prefixes'; path: string; handler: (req: http.IncomingMessage, res: Res) => Promise<void> | void }) => () => void }
+    | undefined
+  if (webserver === undefined) return
+
+  const dispose = webserver.register({
+    kind: 'prefixes',
+    path: '/freebuff/api',
+    handler: async (req, res) => {
+      const url = new URL(req.url ?? '/', 'http://local')
+      const path = url.pathname.replace(/^\/freebuff\/api/, '') || '/'
+      try {
+        if (req.method === 'GET' && path === '/status') {
+          const options = deps.options()
+          const accounts = await resolveAccounts(options)
+          const proxy = await resolveProxyUrl(() => (options.upstreamProxy.length > 0 ? options.upstreamProxy : undefined))
+          return sendJson(res, 200, {
+            ok: true,
+            apiKeyEnv: options.apiKeyEnv,
+            baseURL: options.baseURL,
+            proxy: { source: proxy.source, url: proxy.url ?? null },
+            credentialConfigured: await deps.credentialConfigured(),
+            accounts: accounts.map((a) => ({ email: a.email ?? null, token: mask(a.token) })),
+            models: options.models.map((m) => ({ id: m.id, name: m.name })),
+          })
+        }
+        if (req.method === 'POST' && path === '/credentials') {
+          const body = (await readJsonBody(req)) as { value?: string } | null
+          const value = typeof body?.value === 'string' ? body.value.trim() : ''
+          if (value.length === 0) return sendJson(res, 400, { ok: false, error: 'empty credential value' })
+          if (deps.credentials === undefined) return sendJson(res, 503, { ok: false, error: 'credentials service unavailable' })
+          await deps.credentials.set(deps.options().apiKeyEnv, value)
+          return sendJson(res, 200, { ok: true })
+        }
+        if (req.method === 'POST' && path === '/credentials/clear') {
+          if (deps.credentials === undefined) return sendJson(res, 503, { ok: false, error: 'credentials service unavailable' })
+          await deps.credentials.unset(deps.options().apiKeyEnv)
+          return sendJson(res, 200, { ok: true })
+        }
+        if (req.method === 'POST' && path === '/probe') {
+          const options = deps.options()
+          const accounts = await resolveAccounts(options)
+          if (accounts.length === 0) return sendJson(res, 200, { ok: false, error: 'no account configured' })
+          const first: FreebuffAccount = accounts[0]
+          const result = await deps.probe(first.token)
+          const data = result.data as { uid?: string; status?: string; message?: string } | null
+          return sendJson(res, 200, {
+            ok: result.status === 200,
+            status: result.status,
+            uid: data?.uid ?? null,
+            accountStatus: data?.status ?? null,
+            message: data?.message ?? null,
+          })
+        }
+        return sendJson(res, 404, { ok: false, error: 'not found' })
+      } catch (error) {
+        ctx.logger?.warn?.('llm-freebuff: api error: ' + String(error instanceof Error ? error.message : error))
+        return sendJson(res, 500, { ok: false, error: String(error instanceof Error ? error.message : error) })
+      }
+    },
+  })
+  ctx.effect(() => dispose, 'dsh-freebuff: webserver api')
+}
