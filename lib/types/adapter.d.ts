@@ -11,6 +11,12 @@ export interface AdapterConfig {
     options: () => ResolvedOptions;
     client: FreebuffClient;
     userId: () => string;
+    /**
+     * Resolve the credential-store / env token value for `apiKeyEnv`
+     * (the Models page "configure credential" button writes this ref).
+     * May hold one token or comma-separated multiple accounts.
+     */
+    resolveApiKey: () => Promise<string | undefined>;
 }
 export declare class FreebuffAdapter extends LlmAdapter {
     private config;

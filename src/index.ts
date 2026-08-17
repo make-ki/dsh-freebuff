@@ -51,7 +51,21 @@ export function apply(ctx: import('@deepseek-ai/cordis').Context, config: unknow
   })
   let userId: string | undefined
   const resolveUserId = (): string => (userId ??= getOrCreateAnonymousUserId())
-  const adapter = new FreebuffAdapter({ options, client, userId: resolveUserId })
+  // The Models settings page writes credentials under the provider's
+  // apiKeyEnv ref (FREEBUFF_API_KEY by default). Resolve it through the
+  // credentials seam first, then the launching environment.
+  const resolveApiKey = async (): Promise<string | undefined> => {
+    const ref = options().apiKeyEnv
+    const credentials = ctx.get('credentials')
+    if (credentials !== undefined) {
+      const hit = await credentials.resolve(ref)
+      if (hit !== undefined && typeof hit.value === 'string' && hit.value.length > 0) return hit.value
+    }
+    const ambient = process.env[ref]
+    if (ambient !== undefined && ambient.length > 0) return ambient
+    return undefined
+  }
+  const adapter = new FreebuffAdapter({ options, client, userId: resolveUserId, resolveApiKey })
 
   ctx.llm.registerConfigurableProviders([
     { provider: PROVIDER, displayName: 'Freebuff', settingsNs: NS, settingsPath: [] },

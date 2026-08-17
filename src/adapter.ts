@@ -33,6 +33,12 @@ export interface AdapterConfig {
   options: () => ResolvedOptions
   client: FreebuffClient
   userId: () => string
+  /**
+   * Resolve the credential-store / env token value for `apiKeyEnv`
+   * (the Models page "configure credential" button writes this ref).
+   * May hold one token or comma-separated multiple accounts.
+   */
+  resolveApiKey: () => Promise<string | undefined>
 }
 
 const EFFORT_NAMES: Record<string, string> = {
@@ -153,7 +159,17 @@ export class FreebuffAdapter extends LlmAdapter {
       throw new LlmError(`unknown freebuff model: ${options.model}`, 'INVALID_REQUEST')
     }
     const accounts = await resolveAccounts(connection)
-    if (accounts.length === 0) {
+    // The Models page credential (apiKeyEnv ref) outranks the other sources:
+    // it is what "配置凭证" writes and what the page reports as configured.
+    const credentialTokens = (await this.config.resolveApiKey())
+      ?.split(',')
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0) ?? []
+    const allAccounts = [
+      ...credentialTokens.map((token) => ({ token })),
+      ...accounts.filter((a) => !credentialTokens.includes(a.token)),
+    ]
+    if (allAccounts.length === 0) {
       throw new LlmError(
         'llm-freebuff: no freebuff account. Add accounts in Settings > Freebuff, export ' +
           connection.tokenEnv +
@@ -171,11 +187,11 @@ export class FreebuffAdapter extends LlmAdapter {
       ...(options.purpose === 'compaction' ? { 'x-deepseek-harness-compact': '1' } : {}),
     }
 
-    const clientId = stableFingerprint(accounts[0].token)
+    const clientId = stableFingerprint(allAccounts[0].token)
     let lastError: unknown
 
-    for (let attempt = 0; attempt < accounts.length; attempt++) {
-      const account = this.config.client.pickAccount(mc.session, accounts)
+    for (let attempt = 0; attempt < allAccounts.length; attempt++) {
+      const account = this.config.client.pickAccount(mc.session, allAccounts)
       if (account === null) break
       // One account = one live instance: the whole request lifecycle
       // (session + run chain + chat stream) must be serialized per account,

@@ -8,7 +8,9 @@ export declare const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 300000;
 export declare const DEFAULT_TOKEN_FILE = "~/.config/manicode/credentials.json";
 export declare const DEFAULT_TOKEN_ENV = "FREEBUFF_TOKEN";
 export declare const Config: z<Schemastery.ObjectS<{
-    /** Explicit freebuff auth tokens (one per account). Empty = auto-resolve. */
+    /** 凭证引用：在「设置 > 模型」的 Freebuff 卡片点「配置凭证」会写入此引用（默认 FREEBUFF_API_KEY）。 */
+    apiKeyEnv: z<string, string>;
+    /** 显式 token 列表（每项一个账号）。留空时按顺序尝试：凭证库 → FREEBUFF_TOKEN 环境变量 → 官方 CLI 凭证文件。 */
     accounts: z<({
         token?: string | null | undefined;
         email?: string | null | undefined;
@@ -18,13 +20,14 @@ export declare const Config: z<Schemastery.ObjectS<{
         email: z<string, string>;
         name: z<string, string>;
     }>[]>;
-    /** Env var holding comma-separated tokens, consulted after `accounts`. */
     tokenEnv: z<string, string>;
-    /** JSON credential file (official CLI layout), consulted last. */
     tokenFile: z<string, string>;
     baseURL: z<string, string>;
-    /** http(s) proxy for upstream traffic; empty = HTTPS_PROXY/http_proxy env. */
     upstreamProxy: z<string, string>;
+    reasoningEffort: z<"low" | "high" | "max", "low" | "high" | "max">;
+    maxTokens: z<number, number>;
+    defaultContextWindow: z<number, number>;
+    streamIdleTimeoutMs: z<number, number>;
     models: z<({
         id?: string | null | undefined;
         name?: string | null | undefined;
@@ -44,13 +47,11 @@ export declare const Config: z<Schemastery.ObjectS<{
         contextWindow: z<number, number>;
         maxTokens: z<number, number>;
     }>[]>;
-    maxTokens: z<number, number>;
-    defaultContextWindow: z<number, number>;
-    streamIdleTimeoutMs: z<number, number>;
-    reasoningEffort: z<"low" | "high" | "max", "low" | "high" | "max">;
     retryPolicy: z<RetryPolicyConfig>;
 }>, Schemastery.ObjectT<{
-    /** Explicit freebuff auth tokens (one per account). Empty = auto-resolve. */
+    /** 凭证引用：在「设置 > 模型」的 Freebuff 卡片点「配置凭证」会写入此引用（默认 FREEBUFF_API_KEY）。 */
+    apiKeyEnv: z<string, string>;
+    /** 显式 token 列表（每项一个账号）。留空时按顺序尝试：凭证库 → FREEBUFF_TOKEN 环境变量 → 官方 CLI 凭证文件。 */
     accounts: z<({
         token?: string | null | undefined;
         email?: string | null | undefined;
@@ -60,13 +61,14 @@ export declare const Config: z<Schemastery.ObjectS<{
         email: z<string, string>;
         name: z<string, string>;
     }>[]>;
-    /** Env var holding comma-separated tokens, consulted after `accounts`. */
     tokenEnv: z<string, string>;
-    /** JSON credential file (official CLI layout), consulted last. */
     tokenFile: z<string, string>;
     baseURL: z<string, string>;
-    /** http(s) proxy for upstream traffic; empty = HTTPS_PROXY/http_proxy env. */
     upstreamProxy: z<string, string>;
+    reasoningEffort: z<"low" | "high" | "max", "low" | "high" | "max">;
+    maxTokens: z<number, number>;
+    defaultContextWindow: z<number, number>;
+    streamIdleTimeoutMs: z<number, number>;
     models: z<({
         id?: string | null | undefined;
         name?: string | null | undefined;
@@ -86,13 +88,10 @@ export declare const Config: z<Schemastery.ObjectS<{
         contextWindow: z<number, number>;
         maxTokens: z<number, number>;
     }>[]>;
-    maxTokens: z<number, number>;
-    defaultContextWindow: z<number, number>;
-    streamIdleTimeoutMs: z<number, number>;
-    reasoningEffort: z<"low" | "high" | "max", "low" | "high" | "max">;
     retryPolicy: z<RetryPolicyConfig>;
 }>>;
 export interface ResolvedOptions {
+    apiKeyEnv: string;
     accounts: {
         token: string;
         email?: string;
