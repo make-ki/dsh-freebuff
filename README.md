@@ -18,32 +18,46 @@ session(POST /api/v1/freebuff/session) → agent-runs(START 主 agent + context-
 
 > 前提：已安装 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)，Node ≥ 20，PATH 中有 `dsh` 与 `pnpm`。
 
-### 方式 A：`dsh plugin add` + 一键装配（推荐）
+### 方式 A：GitHub 直装（推荐，零构建）
 
 ```bash
-# 1) 装依赖 + 自动解析 peer（tgz 在仓库根目录；发布到 npm 后可直接用包名）
-dsh plugin --profile web add D:/developing/DSH-plugin/dsh-freebuff/dsh-freebuff-0.1.0.tgz
+# 1) 从 GitHub 安装依赖（仓库内已带编译产物 lib/，无需构建）
+dsh plugin --profile web add github:liceses/dsh-freebuff
 
 # 2) 写入 bundle 装配（幂等）+ 打印重启指引
-node D:/developing/DSH-plugin/dsh-freebuff/scripts/install.mjs --profile web
+node <解压位置>/scripts/install.mjs --profile web
+# 或手动：把 "dsh-freebuff" 加进 ~/.dsh/profiles/web/package.json 的 dsh.profile.bundles
 
 # 3) 重启 dsh web
 ```
 
-`dsh plugin add` 会把参数转发给 profile 目录里的 pnpm（已用 pnpm 11 实测：+13 依赖，含全部 `@deepseek-ai/*` peer，加载验证通过）。若 registry 下载报错（`UND_ERR_DESTROYED` 等），给 pnpm 显式指定代理：
+`dsh plugin add` 会把参数转发给 profile 目录里的 pnpm：安装本包并自动解析全部 `@deepseek-ai/*` peer 依赖（已用 pnpm 11 实测：+13 依赖，加载验证通过）。若 registry 下载报错（`UND_ERR_DESTROYED` 等），给 pnpm 显式指定代理：
 
 ```bash
-dsh plugin --profile web add <tgz> --proxy http://127.0.0.1:10808 --https-proxy http://127.0.0.1:10808
+dsh plugin --profile web add github:liceses/dsh-freebuff --proxy http://127.0.0.1:10808 --https-proxy http://127.0.0.1:10808
 ```
 
-> `scripts/install.mjs` 只做 bundle 装配时：`node scripts/install.mjs --profile web`（自动把 `dsh-freebuff` 幂等写入 `dsh.profile.bundles`）。
+> `scripts/install.mjs` 用法：`node scripts/install.mjs [--profile <name>] [--tgz <本地包>]`（自动把 `dsh-freebuff` 幂等写入 `dsh.profile.bundles`）。
 > 包内的 `dsh.bundle.patch` 指向 `cordis.patch.yml`，装配时会自动插入 `llm-freebuff` 插件行。
 
-### 方式 B：源码构建 + 注入（开发迭代）
+### 方式 B：克隆构建（自编译 / 二次开发）
+
+```bash
+git clone https://github.com/liceses/dsh-freebuff
+cd dsh-freebuff
+npm install
+npm run build            # 产出 lib/ 与 dsh-freebuff-<version>.tgz
+
+# 用构建出的 tgz 安装：
+dsh plugin --profile web add ./dsh-freebuff-0.1.0.tgz
+node scripts/install.mjs --profile web
+```
+
+### 方式 C：注入式开发（本机 dsh-super-injector 环境）
 
 ```bash
 npm install
-npm run build          # 或 bash scripts/build.sh
+npm run build
 dev_inject_plugin <本目录>
 ```
 
@@ -51,7 +65,7 @@ dev_inject_plugin <本目录>
 
 1. 重启 dsh web
 2. 打开 **Web 模型设置页 → 提供商 Freebuff → `deepseek/deepseek-v4-flash`**
-3. 发一条消息验证（无需额外配置：凭证自动复用官方 CLI 的 `~/.config/manicode/credentials.json`）
+3. 发一条消息验证（无需额外配置：凭证自动复用官方 CLI 的 `~/.config/manicode/credentials.json`；或按下方「账号配置」三选一）
 
 ### 排障
 
