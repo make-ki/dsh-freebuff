@@ -42,10 +42,13 @@ function mask(token: string): string {
 }
 
 export function installFreebuffApi(ctx: { get: (name: string) => unknown; effect: (fn: () => unknown, name?: string) => void; logger?: { warn?: (m: string) => void } }, deps: ApiDeps): void {
-  const webserver = ctx.get('webserver') as
+  const webserver = ctx.get('webServer') as
     | { register: (route: { kind: 'prefixes'; path: string; handler: (req: http.IncomingMessage, res: Res) => Promise<void> | void }) => () => void }
     | undefined
-  if (webserver === undefined) return
+  if (webserver === undefined) {
+    ctx.logger?.warn?.('llm-freebuff: webServer service not available; settings API disabled')
+    return
+  }
 
   const dispose = webserver.register({
     kind: 'prefixes',

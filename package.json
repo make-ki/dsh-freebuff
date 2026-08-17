@@ -10,11 +10,22 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./client": {
+      "types": "./lib/types/client.d.ts",
+      "default": "./lib/client.js"
+    }
   },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-slots"
+      ],
+      "platform": "web"
     }
   },
   "files": [
@@ -26,9 +37,10 @@
   ],
   "scripts": {
     "build": "bash scripts/build.sh",
+    "build:client": "tsdown",
     "install:profile": "node scripts/install.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "check": "node --check lib/index.js && node --check lib/freebuff.js && node --check lib/adapter.js && node --check lib/translate.js && node --check lib/serialize.js"
+    "check": "node --check lib/index.js && node --check lib/freebuff.js && node --check lib/adapter.js && node --check lib/translate.js && node --check lib/serialize.js && node --check lib/client.js"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
@@ -40,6 +52,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.20.0",
+    "tsdown": "^0.22.14",
     "typescript": "~5.7.2"
   },
   "engines": {

@@ -52,6 +52,7 @@ link_pkg() {
       dsh-home-paths) rel="packages/core/home-paths" ;;
       dsh-brand)  rel="packages/core/brand" ;;
       dsh-launch-environment) rel="packages/core/launch-environment" ;;
+      dsh-client-ui-slots) rel="packages/core/client-ui-slots" ;;
       @types/node) rel="node_modules/@types/node" ;;
       *) echo "build: no checkout path for $name" >&2; return 1 ;;
     esac
@@ -96,5 +97,17 @@ fi
 
 echo "=== Compiling src → lib ==="
 "$TSC" -p tsconfig.json
+
+# Client half: the injector expects a tsdown bundle (not bare tsc output).
+if [ -f tsdown.config.ts ] && command -v npm >/dev/null 2>&1; then
+  echo "=== Building client bundle (tsdown + __ModuleLoader__ wrap) ==="
+  npm run build:client 2>/dev/null || true
+  node scripts/bundle-client.mjs 2>/dev/null || true
+  if [ -f "lib/client.js" ] && grep -q "__ModuleLoader__" "lib/client.js"; then
+    echo "client bundle OK (tsdown)"
+  else
+    echo "client bundle MISSING __ModuleLoader__ — run: npm run build:client" >&2
+  fi
+fi
 echo "=== Build complete ==="
 ls lib/ | head -20
