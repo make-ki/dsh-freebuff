@@ -105,7 +105,14 @@ export class FreebuffClient {
     return run
   }
 
-  private acquireChatSlot(token: string): { wait: Promise<void>; release: () => void } {
+  /**
+   * Serialize one account's whole request lifecycle: session acquisition +
+   * run chain + chat stream must never overlap, because one account allows a
+   * single live instance and a second session POST takes the first one over
+   * (409 session_superseded). The caller holds the slot for the entire stream
+   * and must release it in a finally block.
+   */
+  acquireAccountLock(token: string): { wait: Promise<void>; release: () => void } {
     const prev = this.chatGates.get(token) ?? Promise.resolve()
     let release!: () => void
     const gate = new Promise<void>((r) => {
@@ -390,10 +397,34 @@ export class FreebuffClient {
   // ── chat stream ───────────────────────────────────────────────────────────
 
   /**
+   * Recover from a taken-over session (409 session_superseded) WITHOUT
+   * kicking the current occupant: GET the live session first and reuse it
+   * when it is active for the same model; only create a fresh one otherwise.
+   */
+  async recoverSession(token: string, model: string): Promise<SessionCache> {
+    const cur = await this.json('GET', '/api/v1/freebuff/session', {
+      token,
+      headers: { 'x-freebuff-include-unused-rate-limits': '1' },
+      timeoutMs: 10_000,
+    })
+    this.observe(token, cur)
+    const data = cur.data as { status?: string; instanceId?: string; model?: string } | null
+    if (cur.status === 200 && data?.status === 'active' && data.instanceId && (!data.model || data.model === model)) {
+      const s: SessionCache = { instanceId: data.instanceId, model, createdAt: Date.now() }
+      this.sessions.set(token + ':' + model, s)
+      return s
+    }
+    return this.getSession(token, model, true)
+  }
+
+  /**
    * POST one chat/completions and yield parsed SSE payloads (already
-   * unwrapped), ending with the string '[DONE]'. Serialized per account;
-   * stale sessions (428 waiting_room_required / 409 session_superseded /
-   * 502 model mismatch) are rebuilt once through `onStale` and retried.
+   * unwrapped), ending with the string '[DONE]'. The caller must hold the
+   * account lock (acquireAccountLock) for the whole stream; stale sessions
+   * (428 waiting_room_required / 409 session_superseded / 502 model
+   * mismatch) are recovered once through `onStale(status)` and retried.
+   * The stale session is NOT deleted: deleting a taken-over instance would
+   * kick whatever client took it over, causing takeover loops.
    */
   async *chatStream(
     token: string,
@@ -402,79 +433,59 @@ export class FreebuffClient {
     opts: {
       signal?: AbortSignal
       extraHeaders?: Record<string, string>
-      /** Recreate the session (force) and return the new instance id. */
-      onStale?: () => Promise<string>
+      /** Recover the session and return the new instance id. */
+      onStale?: (status: number) => Promise<string>
     } = {},
   ): AsyncGenerator<unknown> {
-    const slot = this.acquireChatSlot(token)
-    try {
-      await Promise.race([
-        slot.wait,
-        new Promise<never>((_, reject) => {
-          if (opts.signal?.aborted) {
-            reject(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' }))
-            return
-          }
-          opts.signal?.addEventListener('abort', () =>
-            reject(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' })),
-          )
-        }),
-      ])
-      let inst = instanceId
-      for (let attempt = 0; attempt < 2; attempt++) {
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json',
-          'x-freebuff-instance-id': inst,
-          accept: 'text/event-stream',
-          ...(opts.extraHeaders ?? {}),
-        }
-        const res = await this.raw('POST', '/api/v1/chat/completions', {
-          token,
-          headers,
-          body: payload,
-          timeoutMs: 0,
-          signal: opts.signal,
-        })
-        const status = res.statusCode ?? 0
-        if (status !== 200) {
-          const text = await collectText(res)
-          const stale =
-            status === 428 ||
-            status === 409 ||
-            (status === 502 &&
-              (text.includes('session_model_mismatch') || text.includes('not valid for limited access')))
-          if (stale && attempt === 0 && opts.onStale) {
-            await this.deleteSession(token, inst).catch(() => {})
-            inst = await opts.onStale()
-            continue
-          }
-          throw new FreebuffUpstreamError(
-            'chat failed: ' + status + ' ' + text.slice(0, 300),
-            status,
-            this.retryAfterMs({ headers: res.headers, data: null }),
-          )
-        }
-        for await (const ev of parseSse(res)) {
-          if (ev.data === '[DONE]') {
-            yield '[DONE]'
-            return
-          }
-          let obj: unknown
-          try {
-            obj = JSON.parse(ev.data)
-          } catch {
-            continue
-          }
-          yield unwrapData(obj)
-        }
-        return
+    let inst = instanceId
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'x-freebuff-instance-id': inst,
+        accept: 'text/event-stream',
+        ...(opts.extraHeaders ?? {}),
       }
-      throw new FreebuffUpstreamError('chat failed: session stayed stale after rebuild', 428)
-    } finally {
-      // Always release: on the success path it hands the slot to the next
-      // caller; on abort-while-waiting it unblocks the queued callers.
-      slot.release()
+      const res = await this.raw('POST', '/api/v1/chat/completions', {
+        token,
+        headers,
+        body: payload,
+        timeoutMs: 0,
+        signal: opts.signal,
+      })
+      const status = res.statusCode ?? 0
+      if (status !== 200) {
+        const text = await collectText(res)
+        const stale =
+          status === 428 ||
+          status === 409 ||
+          (status === 502 &&
+            (text.includes('session_model_mismatch') || text.includes('not valid for limited access')))
+        if (stale && attempt === 0 && opts.onStale) {
+          inst = await opts.onStale(status)
+          continue
+        }
+        throw new FreebuffUpstreamError(
+          'chat failed: ' + status + ' ' + text.slice(0, 300),
+          status,
+          this.retryAfterMs({ headers: res.headers, data: null }),
+        )
+      }
+      for await (const ev of parseSse(res)) {
+        if (ev.data === '[DONE]') {
+          yield '[DONE]'
+          return
+        }
+        let obj: unknown
+        try {
+          obj = JSON.parse(ev.data)
+        } catch {
+          continue
+        }
+        yield unwrapData(obj)
+      }
+      return
     }
+    throw new FreebuffUpstreamError('chat failed: session stayed stale after rebuild', 428)
   }
 }
 
