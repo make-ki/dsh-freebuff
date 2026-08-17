@@ -236,7 +236,7 @@ export class FreebuffAdapter extends LlmAdapter {
           const quotaish =
             error.status === 429 ||
             isQuotaExceededError(error.message) ||
-            /stayed queued|create session failed|session_model_mismatch/i.test(error.message)
+            /stayed queued|create session failed|session_model_mismatch|spend_limited|reduced capacity/i.test(error.message)
           const transient = /start_run failed|timeout|timed out|abort|terminated|session stayed stale/i.test(error.message)
           if (quotaish || transient) {
             this.config.client.cooldown(account.token, error.retryAfterMs ?? 60_000)
@@ -277,6 +277,16 @@ export class FreebuffAdapter extends LlmAdapter {
         return new LlmError(detail, QUOTA_EXCEEDED_CODE, options)
       }
       if (error.status === 429) {
+        if (/spend_limited|reduced capacity|flagged for VPN|proxy usage|restricted location/i.test(detail)) {
+          const hours = error.retryAfterMs !== undefined ? Math.round(error.retryAfterMs / 3_600_000) : undefined
+          return new LlmError(
+            'freebuff 账号被风控标记（spend_limited）：该账号被识别为 VPN/代理使用或受限地区，额度已降低' +
+              (hours !== undefined ? '（冷却约 ' + hours + ' 小时）' : '') +
+              '。对策：换干净的美区代理节点或直连后重试；或换一个未被标记的账号（多账号用逗号分隔配置到 FREEBUFF_TOKEN）。',
+            QUOTA_EXCEEDED_CODE,
+            options,
+          )
+        }
         return new LlmError(detail, 'RATE_LIMIT', options)
       }
       if (error.status === 400) {
@@ -293,7 +303,7 @@ export class FreebuffAdapter extends LlmAdapter {
     if (error instanceof Error && error.name === 'AbortError') {
       return new LlmError('Freebuff request aborted', 'ABORTED', { cause: error })
     }
-    const message = error instanceof Error ? error.message : String(error)
+    const message = error instanceof Error ? error.message ?? String(error) : String(error)
     return new LlmError('Freebuff API request failed: ' + message, 'TRANSPORT', { cause: error })
   }
 }
