@@ -10,8 +10,9 @@ export interface ContentBlock {
     content?: ContentBlock[];
 }
 export interface HarnessMessage {
-    role: 'system' | 'assistant' | 'user';
-    content: ContentBlock[];
+    role: 'system' | 'developer' | 'assistant' | 'user' | 'tool';
+    content: readonly ContentBlock[];
+    toolCallId?: string;
 }
 export interface HarnessRequest {
     model: string;

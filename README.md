@@ -14,6 +14,34 @@ session(POST /api/v1/freebuff/session) → agent-runs(START 主 agent + context-
 
 并实现 `@deepseek-ai/dsh-llm` 的 `LlmAdapter`，注册为 `ctx.llm` 的 `freebuff` 提供商。DSH 对话/会话标题/上下文压缩全部走流式，天然契合上游强制流式。
 
+## Fork compatibility (DSH 0.2.0-rc.2)
+
+This fork targets **DSH 0.2.0-rc.2**, not the upstream 0.1 prerelease. Compatibility with later DSH releases is not yet verified. The Freebuff ToS/account-ban warning above still applies.
+
+```bash
+dsh plugin --profile web add github:make-ki/dsh-freebuff
+```
+
+DSH checks compatibility and automatically adds this package's bundle to the selected profile. **Do not manually edit the profile manifest or use `allow-version` to bypass a failed compatibility check.** Restart the existing DSH Web process after installation. Refreshing a browser tab alone does not load a new server plugin.
+
+The repository includes compiled `lib/` artifacts for GitHub installs. Maintainers must rebuild and commit those artifacts alongside source changes. There is no install-time build or token requirement.
+
+Offline development checks:
+
+```bash
+npm ci --ignore-scripts
+npm run typecheck
+npm run build
+npm test
+npm run check
+npm pack                  # creates dsh-freebuff-<version>.tgz
+node scripts/install.mjs --profile web --tgz ./dsh-freebuff-0.1.1.tgz
+```
+
+The build can use the global DSH installation or a built source checkout via `DSH_CHECKOUT`. `npm run build` does not create a tarball; `npm pack` does. `scripts/install.mjs` delegates tarball installation to `dsh plugin add`. Without `--tgz` it only prints the GitHub command and never edits a profile.
+
+Live upstream smoke tests are separate from offline tests. They consume Freebuff quota and may fail with upstream HTTP 503 even when local compatibility checks pass.
+
 ## 安装
 
 > 前提：已安装 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)，Node ≥ 20，PATH 中有 `dsh` 与 `pnpm`。
@@ -22,35 +50,34 @@ session(POST /api/v1/freebuff/session) → agent-runs(START 主 agent + context-
 
 ```bash
 # 1) 从 GitHub 安装依赖（仓库内已带编译产物 lib/，无需构建）
-dsh plugin --profile web add github:liceses/dsh-freebuff
+dsh plugin --profile web add github:make-ki/dsh-freebuff
 
-# 2) 写入 bundle 装配（幂等）+ 打印重启指引
-node <解压位置>/scripts/install.mjs --profile web
-# 或手动：把 "dsh-freebuff" 加进 ~/.dsh/profiles/web/package.json 的 dsh.profile.bundles
+# 2) DSH 0.2.0-rc.2 自动注册 bundle，无需编辑 profile package.json
 
 # 3) 重启 dsh web
 ```
 
-`dsh plugin add` 会把参数转发给 profile 目录里的 pnpm：安装本包并自动解析全部 `@deepseek-ai/*` peer 依赖（已用 pnpm 11 实测：+13 依赖，加载验证通过）。若 registry 下载报错（`UND_ERR_DESTROYED` 等），给 pnpm 显式指定代理：
+`dsh plugin add` 安装依赖、检查 DSH 版本兼容性并自动注册 bundle。若 registry 下载报错（`UND_ERR_DESTROYED` 等），显式指定代理：
 
 ```bash
-dsh plugin --profile web add github:liceses/dsh-freebuff --proxy http://127.0.0.1:10808 --https-proxy http://127.0.0.1:10808
+dsh plugin --profile web add github:make-ki/dsh-freebuff --proxy http://127.0.0.1:10808 --https-proxy http://127.0.0.1:10808
 ```
 
-> `scripts/install.mjs` 用法：`node scripts/install.mjs [--profile <name>] [--tgz <本地包>]`（自动把 `dsh-freebuff` 幂等写入 `dsh.profile.bundles`）。
+> `scripts/install.mjs` 用法：`node scripts/install.mjs [--profile <name>] [--tgz <本地包>]`。有 `--tgz` 时调用 `dsh plugin add`；否则仅打印安装命令，不直接修改 profile。
 > 包内的 `dsh.bundle.patch` 指向 `cordis.patch.yml`，装配时会自动插入 `llm-freebuff` 插件行。
 
 ### 方式 B：克隆构建（自编译 / 二次开发）
 
 ```bash
-git clone https://github.com/liceses/dsh-freebuff
+git clone https://github.com/make-ki/dsh-freebuff
 cd dsh-freebuff
 npm install
-npm run build            # 产出 lib/ 与 dsh-freebuff-<version>.tgz
+npm run build            # 产出 lib/
+npm test
+npm pack                 # 产出 dsh-freebuff-<version>.tgz
 
-# 用构建出的 tgz 安装：
-dsh plugin --profile web add ./dsh-freebuff-0.1.0.tgz
-node scripts/install.mjs --profile web
+# 用打包出的 tgz 安装（自动注册 bundle）：
+dsh plugin --profile web add ./dsh-freebuff-0.1.1.tgz
 ```
 
 ### 方式 C：注入式开发（本机 dsh-super-injector 环境）
@@ -79,14 +106,13 @@ dev_inject_plugin <本目录>
 ### 卸载
 
 ```bash
-dsh plugin --profile web remove dsh-freebuff   # 移除依赖
-# 并把 dsh-freebuff 从 ~/.dsh/profiles/web/package.json 的 dsh.profile.bundles 中删掉
+dsh plugin --profile web remove dsh-freebuff   # 移除依赖与 bundle 注册
 ```
 
 ## 账号配置（三选一，按优先级）
 
-1. **插件设置**：设置 → Freebuff → `accounts`（`{token, email?}` 数组；界面自动生成）
-2. **环境变量**：`FREEBUFF_TOKEN=tok1,tok2`（逗号分隔多账号）
+1. **凭证库**：在模型页或 Freebuff 设置面板保存到 `FREEBUFF_API_KEY` 引用，优先解析；插件配置 `accounts`（`{token, email?}` 数组）作为后续账号来源。
+2. **环境变量**：`FREEBUFF_TOKEN=tok1,tok2`（逗号分隔多账号）；凭证引用也可从同名环境变量读取。
 3. **自动读取官方 CLI 凭证**：默认读取 `~/.config/manicode/credentials.json`（本机若装过 freebuff CLI 并登录过，开箱即用）
 
 Token 获取：运行官方 CLI 登录后自动写入 `~/.config/manicode/credentials.json`；或参考 `research/freebuff2api/freebuff_tools/extract_freebuff.py` 的设备码流程。

@@ -5,7 +5,9 @@
  * FREEBUFF_API_KEY reference the Models page uses.
  */
 import type http from 'node:http'
-import { resolveAccounts, type FreebuffAccount } from './credentials.js'
+import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-host-webserver'
+import { resolveEffectiveAccounts, type FreebuffAccount } from './credentials.js'
 import { resolveProxyUrl, type ProxyResolution } from './proxy-source.js'
 import type { ResolvedOptions } from './config.js'
 
@@ -13,6 +15,7 @@ export interface ApiDeps {
   options: () => ResolvedOptions
   credentials: { set: (ref: string, value: string) => Promise<unknown>; unset: (ref: string) => Promise<unknown> } | undefined
   credentialConfigured: () => Promise<boolean>
+  resolveApiKey: () => Promise<string | undefined>
   /** Raw upstream GET helper for the probe (0-quota /api/v1/me). */
   probe: (token: string) => Promise<{ status: number; data: unknown }>
 }
@@ -41,17 +44,15 @@ function mask(token: string): string {
   return token.length <= 8 ? '••••' : token.slice(0, 4) + '••••' + token.slice(-4)
 }
 
-export function installFreebuffApi(ctx: { get: (name: string) => unknown; effect: (fn: () => unknown, name?: string) => void; logger?: { warn?: (m: string) => void } }, deps: ApiDeps): void {
-  const webserver = ctx.get('webServer') as
-    | { register: (route: { kind: 'prefixes'; path: string; handler: (req: http.IncomingMessage, res: Res) => Promise<void> | void }) => () => void }
-    | undefined
+export function installFreebuffApi(ctx: Context, deps: ApiDeps): void {
+  const webserver = ctx.get('webServer')
   if (webserver === undefined) {
     ctx.logger?.warn?.('llm-freebuff: webServer service not available; settings API disabled')
     return
   }
 
   const dispose = webserver.register({
-    kind: 'prefixes',
+    kind: 'prefix',
     path: '/freebuff/api',
     handler: async (req, res) => {
       const url = new URL(req.url ?? '/', 'http://local')
@@ -59,7 +60,7 @@ export function installFreebuffApi(ctx: { get: (name: string) => unknown; effect
       try {
         if (req.method === 'GET' && path === '/status') {
           const options = deps.options()
-          const accounts = await resolveAccounts(options)
+          const accounts = await resolveEffectiveAccounts(options, deps.resolveApiKey)
           const proxy = await resolveProxyUrl(() => (options.upstreamProxy.length > 0 ? options.upstreamProxy : undefined))
           return sendJson(res, 200, {
             ok: true,
@@ -86,7 +87,7 @@ export function installFreebuffApi(ctx: { get: (name: string) => unknown; effect
         }
         if (req.method === 'POST' && path === '/probe') {
           const options = deps.options()
-          const accounts = await resolveAccounts(options)
+          const accounts = await resolveEffectiveAccounts(options, deps.resolveApiKey)
           if (accounts.length === 0) return sendJson(res, 200, { ok: false, error: 'no account configured' })
           const first: FreebuffAccount = accounts[0]
           const result = await deps.probe(first.token)

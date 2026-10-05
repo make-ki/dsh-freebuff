@@ -21,7 +21,7 @@ import {
 } from '@deepseek-ai/dsh-llm'
 import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
 import { FreebuffClient, FreebuffUpstreamError, stableFingerprint } from './freebuff.js'
-import { resolveAccounts } from './credentials.js'
+import { resolveEffectiveAccounts } from './credentials.js'
 import { MODEL_EFFORTS, type ModelEntry } from './constants.js'
 import { buildUpstreamPayload } from './serialize.js'
 import { translate } from './translate.js'
@@ -158,17 +158,7 @@ export class FreebuffAdapter extends LlmAdapter {
     if (mc === undefined) {
       throw new LlmError(`unknown freebuff model: ${options.model}`, 'INVALID_REQUEST')
     }
-    const accounts = await resolveAccounts(connection)
-    // The Models page credential (apiKeyEnv ref) outranks the other sources:
-    // it is what "配置凭证" writes and what the page reports as configured.
-    const credentialTokens = (await this.config.resolveApiKey())
-      ?.split(',')
-      .map((t) => t.trim())
-      .filter((t) => t.length > 0) ?? []
-    const allAccounts = [
-      ...credentialTokens.map((token) => ({ token })),
-      ...accounts.filter((a) => !credentialTokens.includes(a.token)),
-    ]
+    const allAccounts = await resolveEffectiveAccounts(connection, this.config.resolveApiKey)
     if (allAccounts.length === 0) {
       throw new LlmError(
         'llm-freebuff: no freebuff account. Add accounts in Settings > Freebuff, export ' +
@@ -213,7 +203,7 @@ export class FreebuffAdapter extends LlmAdapter {
         ])
         const session = await this.config.client.getSession(account.token, mc.session)
         const run = await this.config.client.ensureRun(account.token, mc.agent)
-        const payload = buildUpstreamPayload(options as never, mc, session, run.runId, clientId)
+        const payload = buildUpstreamPayload(options, mc, session, run.runId, clientId)
         const onStale = async (status: number): Promise<string> => {
           // 409 = our session was taken over: reuse the current occupant's
           // instance instead of deleting it (deleting causes takeover loops).

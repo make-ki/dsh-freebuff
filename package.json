@@ -1,6 +1,6 @@
 {
   "name": "dsh-freebuff",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Freebuff provider for the DeepSeek Harness LLM seam: reverse-proxies the freebuff (CodebuffAI) free DeepSeek V4 Flash desktop protocol into a harness model provider (ctx.llm / LlmAdapter).",
   "type": "module",
   "main": "lib/index.js",
@@ -33,22 +33,28 @@
     "src",
     "cordis.patch.yml",
     "README.md",
+    "scripts/install.mjs",
     "LICENSE"
   ],
   "scripts": {
     "build": "bash scripts/build.sh",
-    "build:client": "tsdown",
+    "build:client": "tsdown && node scripts/bundle-client.mjs",
     "install:profile": "node scripts/install.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --test test/*.test.mjs scripts/*.test.mjs",
     "check": "node --check lib/index.js && node --check lib/freebuff.js && node --check lib/adapter.js && node --check lib/translate.js && node --check lib/serialize.js && node --check lib/client.js"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-anonymous-user-id": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-llm": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-settings": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-timeout": "^0.1.0-rc.6",
-    "@deepseek-ai/schemastery": "^3.18.1"
+    "@deepseek-ai/cordis": "~4.0.4",
+    "@deepseek-ai/cordis-plugin-loader": "~1.0.5",
+    "@deepseek-ai/cosmokit": "~1.8.5",
+    "@deepseek-ai/dsh-anonymous-user-id": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-credentials": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-host-webserver": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-llm": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-settings": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-timeout": "0.2.0-rc.2",
+    "@deepseek-ai/schemastery": "~3.18.4"
   },
   "devDependencies": {
     "@types/node": "^22.20.0",

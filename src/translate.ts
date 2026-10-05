@@ -5,7 +5,7 @@
  * deltas open stateful blocks; finish reason and usage are deferred until
  * the [DONE] sentinel.
  */
-import { CallId, EMPTY_RESPONSE_CODE, LlmError, type StreamChunk } from '@deepseek-ai/dsh-llm'
+import { ToolCallId, EMPTY_RESPONSE_CODE, LlmError, type StreamChunk } from '@deepseek-ai/dsh-llm'
 
 export interface TokenUsage {
   inputTokens: number
@@ -73,7 +73,7 @@ function closeBlock(block: Block) {
     case 'reasoning':
       return { type: 'reasoning' as const, text: block.text }
     case 'tool-call':
-      return { type: 'tool-call' as const, id: CallId(block.callId ?? ''), name: block.name ?? '', arguments: block.text }
+      return { type: 'tool-call' as const, id: ToolCallId(block.callId ?? ''), name: block.name ?? '', arguments: block.text }
   }
 }
 
@@ -166,7 +166,7 @@ export async function* translate(
         yield {
           type: 'tool-call-delta',
           index: block.index,
-          id: CallId(block.callId ?? ''),
+          id: ToolCallId(block.callId ?? ''),
           ...(block.name !== undefined ? { name: block.name } : {}),
           argumentsDelta: fragment,
         }

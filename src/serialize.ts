@@ -20,8 +20,9 @@ export interface ContentBlock {
 }
 
 export interface HarnessMessage {
-  role: 'system' | 'assistant' | 'user'
-  content: ContentBlock[]
+  role: 'system' | 'developer' | 'assistant' | 'user' | 'tool'
+  content: readonly ContentBlock[]
+  toolCallId?: string
 }
 
 export interface HarnessRequest {
@@ -45,7 +46,7 @@ export interface UpstreamPayload {
 }
 
 /** Flatten the text blocks of a message (user / tool-result content). */
-function flattenText(blocks: ContentBlock[]): string {
+function flattenText(blocks: readonly ContentBlock[]): string {
   return blocks.filter((b) => b.type === 'text').map((b) => b.text ?? '').join('')
 }
 
@@ -75,8 +76,12 @@ function serializeAssistant(message: HarnessMessage): Record<string, unknown> {
 export function serializeMessages(messages: HarnessMessage[]): Record<string, unknown>[] {
   const wire: Record<string, unknown>[] = []
   for (const message of messages) {
-    if (message.role === 'system') {
-      wire.push({ role: 'system', content: flattenText(message.content) })
+    if (message.role === 'tool') {
+      wire.push({ role: 'tool', tool_call_id: message.toolCallId, content: flattenText(message.content) || '(no output)' })
+      continue
+    }
+    if (message.role === 'system' || message.role === 'developer') {
+      wire.push({ role: message.role, content: flattenText(message.content) })
       continue
     }
     if (message.role === 'assistant') {

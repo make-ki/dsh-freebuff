@@ -186,13 +186,14 @@ function SettingsView() {
 }
 
 export function apply(ctx: { slots: { inject: (name: string, factory: () => unknown) => unknown; register: (opts: unknown, comp?: unknown) => unknown }; effect: (fn: () => unknown, name?: string) => void }): void {
+  ctx.effect(() => {
+    const style = document.createElement('style')
+    style.textContent = styles
+    document.head.appendChild(style)
+    return () => style.remove()
+  }, 'dsh-freebuff: settings styles')
   ctx.effect(() => ctx.slots.inject('settings.section', () => ctx.slots.register(
     { name: 'settings.section', id: 'freebuff-config', order: 55, label: 'Freebuff' },
-    () => {
-      const style = document.createElement('style')
-      style.textContent = styles
-      document.head.appendChild(style)
-      return h('div', { className: '' }, h(SettingsView))
-    },
+    SettingsView,
   )), 'dsh-freebuff: settings section')
 }

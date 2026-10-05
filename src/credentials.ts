@@ -18,6 +18,12 @@ export interface FreebuffAccount {
   fingerprintId?: string
 }
 
+export async function resolveEffectiveAccounts(options: ResolvedOptions, resolveApiKey: () => Promise<string | undefined>): Promise<FreebuffAccount[]> {
+  const tokens = (await resolveApiKey())?.split(/[,\r\n]+/).map((token) => token.trim()).filter(Boolean) ?? []
+  const accounts = await resolveAccounts(options)
+  return [...new Set(tokens)].map((token) => ({ token })).concat(accounts.filter((account) => !tokens.includes(account.token)))
+}
+
 export function expandHome(file: string): string {
   if (file === '~') return homedir()
   if (file.startsWith('~/') || file.startsWith('~\\')) return path.join(homedir(), file.slice(2))
