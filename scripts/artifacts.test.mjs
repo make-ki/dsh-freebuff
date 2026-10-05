@@ -12,6 +12,7 @@ test('package targets tested DSH release and ships installer', () => {
   }
   assert.ok(pkg.files.includes('scripts/install.mjs'))
   assert.equal(pkg.dsh.bundle.patch, './cordis.patch.yml')
+  assert.match(read('cordis.patch.yml'), /^- insert:\n\s+- id: llm-freebuff\n\s+name: dsh-freebuff/m)
 })
 test('client artifact loads and exports plugin through module loader', () => {
   let loaded

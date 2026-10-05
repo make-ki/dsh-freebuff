@@ -1,4 +1,5 @@
-# dsh-freebuff bundle patch: insert the provider plugin row into the profile.
-# Consumed via the package.json "dsh" -> "bundle" -> "patch" field.
-- id: llm-freebuff
-  name: dsh-freebuff
+# Add the provider plugin row to the bundle plugin list.
+# dsh-app-boot applies this package-declared patch after the dsh-web-app layer.
+- insert:
+    - id: llm-freebuff
+      name: dsh-freebuff
